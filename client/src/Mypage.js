@@ -4,6 +4,8 @@ import { create as ipfsHttpClient } from "ipfs-http-client";
 import { Buffer } from "buffer";
 import Web3 from "web3";
 import Meme from "./abis/Meme.json";
+import MemeNFT from "./abis/MemeNFT.json"; // NFTコントラクトのABIをインポート
+import React from "react";
 
 const projectId = "2X7EVxMkvakuKsp4tXQHQmihJa8";
 const projectSecret = "f72b425c3cf76393e04dd0683b84b63b";
@@ -13,7 +15,10 @@ function App() {
   const [account, setAccount] = useState("");
   const [buffer, setBuffer] = useState(null);
   const [contract, setContract] = useState(null);
-  const [memeHashes, setMemeHashes] = useState([]); // 複数の画像ハッシュを管理
+  const [memeHashes, setMemeHashes] = useState([]);
+  const [nftContract, setNftContract] = useState(null); // NFTコントラクト
+  const [recipientAddress, setRecipientAddress] = useState(""); // 譲渡先アドレス
+  const [tokenId, setTokenId] = useState(null); // NFTのトークンID
 
   const ipfs = ipfsHttpClient({
     url: "https://ipfs.infura.io:5001/api/v0",
@@ -38,29 +43,34 @@ function App() {
     }
   };
 
-  //deploy memeHash to Blockchain
   const loadBlockchainData = async () => {
     const web3 = window.web3;
     const accounts = await web3.eth.getAccounts();
     setAccount(accounts[0]);
-    const networkId = await web3.eth.net.getId();
-    const networkData = Meme.networks[networkId];
-    if (networkData) {
-      const abi = Meme.abi;
-      const address = networkData.address;
-      const contractInstance = new web3.eth.Contract(abi, address);
-      setContract(contractInstance);
 
-      // ここで複数のハッシュを取得するためのロジックを記述
-      const hashCount = await contractInstance.methods.getHashCount().call(); // 仮定: ハッシュの数を返す関数
+    const networkId = await web3.eth.net.getId();
+    const memeData = Meme.networks[networkId];
+    if (memeData) {
+      const memeContract = new web3.eth.Contract(Meme.abi, memeData.address);
+      setContract(memeContract);
+
+      const hashCount = await memeContract.methods.getHashCount().call();
       const hashes = [];
       for (let i = 0; i < hashCount; i++) {
-        const memeHash = await contractInstance.methods.getHash(i).call(); // 仮定: 特定のインデックスのハッシュを取得
+        const memeHash = await memeContract.methods.getHash(i).call();
         hashes.push(memeHash);
       }
       setMemeHashes(hashes);
     } else {
-      window.alert("Smart contract not deployed to detected network!");
+      window.alert("Meme contract not deployed to detected network!");
+    }
+
+    const nftData = MemeNFT.networks[networkId];
+    if (nftData) {
+      const nftContractInstance = new web3.eth.Contract(MemeNFT.abi, nftData.address);
+      setNftContract(nftContractInstance);
+    } else {
+      window.alert("NFT contract not deployed to detected network!");
     }
   };
 
@@ -74,13 +84,13 @@ function App() {
     };
   };
 
-  //set memeHash in front to Meme.sol
   const onSubmit = (event) => {
     event.preventDefault();
-    ipfs.add(buffer)
+    ipfs
+      .add(buffer)
       .then((result) => {
         const memeHash = result.path;
-        setMemeHashes([...memeHashes, memeHash]); // 配列に追加
+        setMemeHashes([...memeHashes, memeHash]);
         contract.methods.set(memeHash).send({ from: account }).then(() => {
           console.log("Meme added to blockchain:", memeHash);
         });
@@ -90,10 +100,34 @@ function App() {
       });
   };
 
-  //insert memeHash to infura and return 2.change memeHash 
+  const mintNFT = async (hash) => {
+    if (!nftContract) return;
+    const tokenURI = `https://ipfs.infura.io/ipfs/${hash}`;
+    try {
+      const result = await nftContract.methods.mintNFT(account, tokenURI).send({ from: account });
+      const tokenId = result.events.Transfer.returnValues.tokenId;
+      setTokenId(tokenId); // ミントされたトークンIDを保存
+      console.log("NFT minted with URI:", tokenURI, "Token ID:", tokenId);
+    } catch (error) {
+      console.error("Error minting NFT:", error);
+    }
+  };
+
+  const transferNFT = async () => {
+    if (!nftContract || !recipientAddress || tokenId === null) return;
+    try {
+      await nftContract.methods
+        .transferFrom(account, recipientAddress, tokenId)
+        .send({ from: account });
+      console.log(`NFT with Token ID ${tokenId} transferred to ${recipientAddress}`);
+    } catch (error) {
+      console.error("Error transferring NFT:", error);
+    }
+  };
+
   return (
     <div>
-      <h1>Decentralized Meme Storage</h1>
+      <h1>Decentralized Meme Storage with NFTs</h1>
       <p>Account: {account}</p>
       <form className="button" onSubmit={onSubmit}>
         <input type="file" onChange={captureFile} />
@@ -101,10 +135,30 @@ function App() {
       </form>
       <div className="images">
         {memeHashes.map((hash, index) => (
-          <a key={index} href={`https://ipfs.infura.io/ipfs/${hash}`} target="_blank" rel="noopener noreferrer">
-            <img src={`https://ipfs.infura.io/ipfs/${hash}`} alt={`Meme ${index}`} style={{ width: "200px", margin: "10px" }} />
-          </a>
+          <div key={index} style={{ marginBottom: "20px" }}>
+            <a
+              href={`https://ipfs.infura.io/ipfs/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src={`https://ipfs.infura.io/ipfs/${hash}`}
+                alt={`Meme ${index}`}
+                style={{ width: "200px", margin: "10px" }}
+              />
+            </a>
+            <button onClick={() => mintNFT(hash)}>Mint as NFT</button>
+          </div>
         ))}
+      </div>
+      <div>
+        <h2>Transfer NFT</h2>
+        <input
+          type="text"
+          placeholder="Recipient address"
+          onChange={(e) => setRecipientAddress(e.target.value)}
+        />
+        <button onClick={transferNFT}>Transfer</button>
       </div>
     </div>
   );

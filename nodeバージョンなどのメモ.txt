@@ -1,0 +1,8 @@
+・node 16
+・web3は1.x 系
+・.babelrcを作成する。
+{
+  "presets": ["@babel/preset-env"],
+  "plugins": ["@babel/plugin-proposal-optional-chaining"]
+}
+・Node.js v16に対応する ipfs-http-client のバージョンとしては、v50系
