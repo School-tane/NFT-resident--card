@@ -1,167 +1,146 @@
-import "./App.css";
-import { useState, useEffect } from "react";
-import { create as ipfsHttpClient } from "ipfs-http-client";
-import { Buffer } from "buffer";
+import React, { useState, useEffect } from "react";
 import Web3 from "web3";
-import Meme from "./abis/Meme.json";
-import MemeNFT from "./abis/MemeNFT.json"; // NFTコントラクトのABIをインポート
-import React from "react";
+import CountryNFT from "./abis/CountryNFT.json";
+import "./Mypage.css";
 
-const projectId = "2X7EVxMkvakuKsp4tXQHQmihJa8";
-const projectSecret = "f72b425c3cf76393e04dd0683b84b63b";
-const authorization = "Basic " + Buffer.from(projectId + ":" + projectSecret).toString("base64");
+function Mypage() {
+    const [account, setAccount] = useState("");
+    const [nftContract, setNftContract] = useState(null);
+    const [myNFTs, setMyNFTs] = useState([]);
 
-function App() {
-  const [account, setAccount] = useState("");
-  const [buffer, setBuffer] = useState(null);
-  const [contract, setContract] = useState(null);
-  const [memeHashes, setMemeHashes] = useState([]);
-  const [nftContract, setNftContract] = useState(null); // NFTコントラクト
-  const [recipientAddress, setRecipientAddress] = useState(""); // 譲渡先アドレス
-  const [tokenId, setTokenId] = useState(null); // NFTのトークンID
+    useEffect(() => {
+        const init = async () => {
+            await loadWeb3();
+            await loadBlockchainData();
+        };
+        init();
 
-  const ipfs = ipfsHttpClient({
-    url: "https://ipfs.infura.io:5001/api/v0",
-    headers: {
-      authorization,
-    },
-  });
+        if (window.ethereum) {
+            window.ethereum.on("accountsChanged", function (accounts) {
+                setAccount(accounts[0]);
+                window.location.reload();
+            });
+        }
+    }, []);
 
-  useEffect(() => {
-    loadWeb3();
-    loadBlockchainData();
-  }, []);
-
-  const loadWeb3 = async () => {
-    if (window.ethereum) {
-      window.web3 = new Web3(window.ethereum);
-      await window.ethereum.enable();
-    } else if (window.web3) {
-      window.web3 = new Web3(window.web3.currentProvider);
-    } else {
-      window.alert("Please use Metamask!");
-    }
-  };
-
-  const loadBlockchainData = async () => {
-    const web3 = window.web3;
-    const accounts = await web3.eth.getAccounts();
-    setAccount(accounts[0]);
-
-    const networkId = await web3.eth.net.getId();
-    const memeData = Meme.networks[networkId];
-    if (memeData) {
-      const memeContract = new web3.eth.Contract(Meme.abi, memeData.address);
-      setContract(memeContract);
-
-      const hashCount = await memeContract.methods.getHashCount().call();
-      const hashes = [];
-      for (let i = 0; i < hashCount; i++) {
-        const memeHash = await memeContract.methods.getHash(i).call();
-        hashes.push(memeHash);
-      }
-      setMemeHashes(hashes);
-    } else {
-      window.alert("Meme contract not deployed to detected network!");
-    }
-
-    const nftData = MemeNFT.networks[networkId];
-    if (nftData) {
-      const nftContractInstance = new web3.eth.Contract(MemeNFT.abi, nftData.address);
-      setNftContract(nftContractInstance);
-    } else {
-      window.alert("NFT contract not deployed to detected network!");
-    }
-  };
-
-  const captureFile = (event) => {
-    event.preventDefault();
-    const file = event.target.files[0];
-    const reader = new window.FileReader();
-    reader.readAsArrayBuffer(file);
-    reader.onloadend = () => {
-      setBuffer(Buffer(reader.result));
+    const loadWeb3 = async () => {
+        if (window.ethereum) {
+            window.web3 = new Web3(window.ethereum);
+            try {
+                await window.ethereum.request({ method: "eth_requestAccounts" });
+            } catch (error) {
+                console.error("User denied account access");
+            }
+        } else {
+            alert("Please install MetaMask!");
+        }
     };
-  };
 
-  const onSubmit = (event) => {
-    event.preventDefault();
-    ipfs
-      .add(buffer)
-      .then((result) => {
-        const memeHash = result.path;
-        setMemeHashes([...memeHashes, memeHash]);
-        contract.methods.set(memeHash).send({ from: account }).then(() => {
-          console.log("Meme added to blockchain:", memeHash);
-        });
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-  };
+    const loadBlockchainData = async () => {
+        const web3 = window.web3;
+        if (!web3) return;
 
-  const mintNFT = async (hash) => {
-    if (!nftContract) return;
-    const tokenURI = `https://ipfs.infura.io/ipfs/${hash}`;
-    try {
-      const result = await nftContract.methods.mintNFT(account, tokenURI).send({ from: account });
-      const tokenId = result.events.Transfer.returnValues.tokenId;
-      setTokenId(tokenId); // ミントされたトークンIDを保存
-      console.log("NFT minted with URI:", tokenURI, "Token ID:", tokenId);
-    } catch (error) {
-      console.error("Error minting NFT:", error);
-    }
-  };
+        const accounts = await web3.eth.getAccounts();
+        setAccount(accounts[0]);
 
-  const transferNFT = async () => {
-    if (!nftContract || !recipientAddress || tokenId === null) return;
-    try {
-      await nftContract.methods
-        .transferFrom(account, recipientAddress, tokenId)
-        .send({ from: account });
-      console.log(`NFT with Token ID ${tokenId} transferred to ${recipientAddress}`);
-    } catch (error) {
-      console.error("Error transferring NFT:", error);
-    }
-  };
+        // Government.jsと同じコントラクトアドレスを使用
+        const contractAddress = "0x522307093BA5A31c5EBfeE26Fa4d6fA52546Ccdb";
 
-  return (
-    <div>
-      <h1>Decentralized Meme Storage with NFTs</h1>
-      <p>Account: {account}</p>
-      <form className="button" onSubmit={onSubmit}>
-        <input type="file" onChange={captureFile} />
-        <input type="submit" />
-      </form>
-      <div className="images">
-        {memeHashes.map((hash, index) => (
-          <div key={index} style={{ marginBottom: "20px" }}>
-            <a
-              href={`https://ipfs.infura.io/ipfs/${hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                src={`https://ipfs.infura.io/ipfs/${hash}`}
-                alt={`Meme ${index}`}
-                style={{ width: "200px", margin: "10px" }}
-              />
-            </a>
-            <button onClick={() => mintNFT(hash)}>Mint as NFT</button>
-          </div>
-        ))}
-      </div>
-      <div>
-        <h2>Transfer NFT</h2>
-        <input
-          type="text"
-          placeholder="Recipient address"
-          onChange={(e) => setRecipientAddress(e.target.value)}
-        />
-        <button onClick={transferNFT}>Transfer</button>
-      </div>
-    </div>
-  );
+        try {
+            const contract = new web3.eth.Contract(CountryNFT.abi, contractAddress);
+            setNftContract(contract);
+            await fetchMyNFTs(contract, accounts[0]);
+        } catch (error) {
+            console.error("Smart contract not found or error loading", error);
+        }
+    };
+
+    const fetchMyNFTs = async (contract, currentAccount) => {
+        if (!contract || !currentAccount) return;
+
+        try {
+            // 自分のアドレスへのTransferイベントを取得
+            const events = await contract.getPastEvents("Transfer", {
+                filter: { to: currentAccount },
+                fromBlock: 0,
+                toBlock: "latest",
+            });
+
+            const tokenIds = new Set();
+            events.forEach((event) => {
+                const tokenId = event.returnValues.tokenId;
+                // tokenIdがBigIntやStringで返ってくる可能性があるため、統一的に扱う
+                tokenIds.add(tokenId.toString());
+            });
+
+            const nftList = [];
+            for (let id of tokenIds) {
+                // 現在の所有者が自分か確認
+                try {
+                    const owner = await contract.methods.ownerOf(id).call();
+                    if (owner.toLowerCase() === currentAccount.toLowerCase()) {
+                        const tokenURI = await contract.methods.tokenURI(id).call();
+
+                        // メタデータ取得
+                        try {
+                            // IPFSゲートウェイなどの調整が必要な場合はここで行う
+                            const response = await fetch(tokenURI);
+                            if (!response.ok) throw new Error("Metadata fetch failed");
+                            const metadata = await response.json();
+
+                            nftList.push({
+                                tokenId: id,
+                                ...metadata
+                            });
+                        } catch (e) {
+                            console.error(`Error fetching metadata for token ${id}`, e);
+                            nftList.push({ tokenId: id, name: "Unknown Artifact", image: null });
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error checking owner for token ${id}`, e);
+                }
+            }
+            setMyNFTs(nftList);
+        } catch (err) {
+            console.error("Fetch NFTs error:", err);
+        }
+    };
+
+    return (
+        <div className="mypage-container">
+            <header className="mypage-header">
+                <h1>マイページ</h1>
+                <p className="account-info">Wallet: {account}</p>
+            </header>
+
+            <section className="nft-section">
+                <h2>保有するデジタル住民票</h2>
+                <div className="nft-grid">
+                    {myNFTs.length === 0 ? (
+                        <p>デジタル住民票を持っていません。</p>
+                    ) : (
+                        myNFTs.map((nft) => (
+                            <div key={nft.tokenId} className="nft-card">
+                                <div className="nft-image-container">
+                                    {nft.image ? (
+                                        <img src={nft.image} alt={nft.name} className="nft-image" />
+                                    ) : (
+                                        <div className="no-image">No Image</div>
+                                    )}
+                                </div>
+                                <div className="nft-info">
+                                    <h3>{nft.name}</h3>
+                                    <p className="nft-id">ID: {nft.tokenId}</p>
+                                    {nft.description && <p className="nft-desc">{nft.description}</p>}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </section>
+        </div>
+    );
 }
 
-export default App;
+export default Mypage;

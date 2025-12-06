@@ -1,33 +1,29 @@
-require('dotenv').config();
-const HDWalletProvider = require('@truffle/hdwallet-provider');
+require("dotenv").config();
+const HDWalletProvider = require("@truffle/hdwallet-provider");
 
-const infura_url = "https://ropsten.infura.io/v3/55bd501e41924fee9ae78506959da324";
-const mnemonic = process.env.MNEMONIC;  // .env ファイルからウォレット復元フレーズを取得
+const privateKey = process.env.PRIVATE_KEY;
+const rpcUrl = process.env.ALCHEMY_URL;
 
 module.exports = {
   networks: {
-    development: {
-      host: "localhost",
-      port: 8545,
-      network_id: "*",
-    },
-    ropsten: {
-      provider: function() {
-        return new HDWalletProvider(mnemonic, infura_url);
-      },
-      network_id: 3, // Ropsten のネットワーク ID
-      gas: 5000000,  // ガスリミット
-    },
+    sepolia: {
+      provider: () => new HDWalletProvider({
+        privateKeys: [privateKey],   // ← ここ重要（配列 + オブジェクト形式）
+        providerOrUrl: rpcUrl        // ← RPC
+      }),
+      network_id: 11155111,
+      gas: 5000000,
+      gasPrice: 20000000000
+    }
   },
-  contracts_directory: './client/src/contracts/',
-  contracts_build_directory: './client/src/abis/',
+
+  contracts_build_directory: "./client/src/abis/",
+
   compilers: {
     solc: {
-      version: "0.8.20", // 使用する Solidity バージョン
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-    },
-  },
+      version: "0.8.20",
+      settings: { optimizer: { enabled: true, runs: 200 } }
+    }
+  }
 };
+

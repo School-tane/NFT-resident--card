@@ -22,16 +22,29 @@
   text-decoration: none;
 }
 
-.image1 {
-    position:absolute;
-    top: 500px;
-    left: 150px;
+.images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
 }
 
-.button {
-    position:absolute;
-    top: 500px;
-    left: 250px;
+.images img {
+  width: 200px;
+  margin: 10px;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.mint-button {
+  margin-top: 10px;
+  padding: 10px 15px;
+  background-color: #09d3ac;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
 nav{
